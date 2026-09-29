@@ -10,6 +10,7 @@
 
 #include <string.h>
 #include <errno.h>
+#include <dirent.h>
 #include <sys/unistd.h>
 #include <sys/stat.h>
 #include "esp_timer.h"
@@ -21,7 +22,7 @@
 #include "sd_pwr_ctrl_by_on_chip_ldo.h"
 #endif
 
-#define EXAMPLE_MAX_CHAR_SIZE 64
+#define EXAMPLE_MAX_CHAR_SIZE 280
 #define RANDOM_READ_SIZE 64
 #define RANDOM_READ_FILE_SIZE (128 * 1024)
 #define RANDOM_READ_ITERATIONS 50000
@@ -145,7 +146,7 @@ void app_main(void)
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
     host.unaligned_multi_block_rw_max_chunk_size = 8;
     // host.max_freq_khz = 400;
-    host.max_freq_khz = 1000;
+    host.max_freq_khz = 20000;
 
     // For SoCs where the SD power can be supplied both via an internal or external (e.g. on-board LDO) power supply.
     // When using specific IO pins (which can be used for ultra high-speed SDMMC) to connect to the SD card
@@ -212,6 +213,36 @@ void app_main(void)
 
     // Card has been initialized, print its properties
     sdmmc_card_print_info(stdout, card);
+
+    // Print all files directly in the SD card root directory.
+    char entry_path[EXAMPLE_MAX_CHAR_SIZE];
+    DIR *root_dir = opendir(MOUNT_POINT);
+    if (root_dir == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to open SD card root directory (errno=%d)", errno);
+    }
+    else
+    {
+        struct dirent *entry;
+        ESP_LOGI(TAG, "Top-level files on the SD card:");
+        while ((entry = readdir(root_dir)) != NULL)
+        {
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            {
+                continue;
+            }
+
+            snprintf(entry_path, sizeof(entry_path), "%s/%s", MOUNT_POINT, entry->d_name);
+            // snprintf(entry_path, sizeof(entry_path), "%s", entry->d_name);
+
+            struct stat entry_stat;
+            if (stat(entry_path, &entry_stat) == 0 && S_ISREG(entry_stat.st_mode))
+            {
+                ESP_LOGI(TAG, "  %s", entry->d_name);
+            }
+        }
+        closedir(root_dir);
+    }
 
     // Use POSIX and C standard library functions to work with files.
 
@@ -286,7 +317,7 @@ void app_main(void)
     }
 
     // Benchmark 50,000 random reads from 64-byte-aligned addresses.
-    const char *file_test = MOUNT_POINT "/test.test";
+    const char *file_test = MOUNT_POINT "/test.tst";
     FILE *test_file = fopen(file_test, "rb");
     if (test_file == NULL)
     {
